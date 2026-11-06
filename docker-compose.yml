@@ -1,0 +1,72 @@
+services:
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: shortener
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      # Solo corren la primera vez (volumen vacío). Solo los .up.sql.
+      - ./migrations/links/000001_links.up.sql:/docker-entrypoint-initdb.d/001_links.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d shortener"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  postgres-clicks:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: shortener_clicks
+    ports:
+      - "5433:5432"
+    volumes:
+      - pgdata_clicks:/var/lib/postgresql/data
+      - ./migrations/clicks/000001_clicks.up.sql:/docker-entrypoint-initdb.d/001_clicks.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d shortener_clicks"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    # maxmemory + allkeys-lru: al llenarse, Redis desaloja las keys menos usadas (comportamiento de caché).
+    # --save "" --appendonly no: sin persistencia, es solo caché y se puede perder.
+    command: >
+      redis-server
+      --maxmemory 128mb
+      --maxmemory-policy allkeys-lru
+      --save ""
+      --appendonly no
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  rabbitmq:
+    # La imagen "management" incluye la UI web en http://localhost:15672 (guest/guest).
+    image: rabbitmq:4-management-alpine
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    ports:
+      - "5672:5672"   # AMQP
+      - "15672:15672" # UI de administración
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  pgdata:
+  pgdata_clicks:
