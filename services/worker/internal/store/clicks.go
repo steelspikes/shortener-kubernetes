@@ -13,6 +13,8 @@ type Click struct {
 	ClickedAt time.Time `json:"clicked_at"`
 	IPHash    string    `json:"ip_hash"`
 	UserAgent string    `json:"user_agent"`
+	Referer   string    `json:"referer"`
+	Browser   string    `json:"browser"`
 }
 
 // ClickStore accede a la tabla clicks de la base de datos de clics.
@@ -27,14 +29,14 @@ func NewClickStore(pool *pgxpool.Pool) *ClickStore {
 func (c *ClickStore) SaveClick(ctx context.Context, item jobs.ClickJob) error {
 	_, err := c.pool.Exec(
 		ctx,
-		"INSERT INTO clicks (code, clicked_at, ip_hash, user_agent) VALUES ($1, $2, $3, $4)",
-		item.Code, item.ClickedAt, item.IPHash, item.UserAgent)
+		"INSERT INTO clicks (code, clicked_at, ip_hash, user_agent, referer, browser) VALUES ($1, $2, $3, $4, $5, $6)",
+		item.Code, item.ClickedAt, item.IPHash, item.UserAgent, item.Referer, item.Browser)
 
 	return err
 }
 
 func (c *ClickStore) ListClicks(ctx context.Context) ([]Click, error) {
-	rows, err := c.pool.Query(ctx, "SELECT code, clicked_at, ip_hash, user_agent FROM clicks")
+	rows, err := c.pool.Query(ctx, "SELECT code, clicked_at, ip_hash, user_agent, referer, browser FROM clicks")
 
 	if err != nil {
 		return nil, err
@@ -46,11 +48,18 @@ func (c *ClickStore) ListClicks(ctx context.Context) ([]Click, error) {
 
 	for rows.Next() {
 		var c Click
-		if err := rows.Scan(&c.Code, &c.ClickedAt, &c.IPHash, &c.UserAgent); err != nil {
+		if err := rows.Scan(&c.Code, &c.ClickedAt, &c.IPHash, &c.UserAgent, &c.Referer, &c.Browser); err != nil {
 			return nil, err
 		}
 		clicks = append(clicks, c)
 	}
 
 	return clicks, nil
+}
+
+func (s *ClickStore) Check(ctx context.Context) error {
+	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+	err := s.pool.Ping(ctx)
+	return err
 }

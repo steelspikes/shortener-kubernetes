@@ -47,7 +47,7 @@ func main() {
 
 	clickStore := store.NewClickStore(pool)
 
-	clicks := &handler.Clicks{Store: clickStore, Log: log}
+	clicks := &handler.Clicks{Store: clickStore, Log: log, Rabbit: mq}
 	app.Routes(srv.Mux, clicks)
 
 	consumer := consumer.Consumer{Rabbit: mq, Log: log, Store: clickStore}

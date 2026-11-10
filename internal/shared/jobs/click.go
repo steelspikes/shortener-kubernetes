@@ -13,5 +13,6 @@ type ClickJob struct {
 	ClickedAt time.Time `json:"clicked_at"`
 	IPHash    string    `json:"ip_hash"` // hash de la IP, nunca la IP cruda
 	UserAgent string    `json:"user_agent"`
-	// Browser   string    `json:"browser"` // derivado del User-Agent
+	Referer   string    `json:"referer"`
+	Browser   string    `json:"browser"` // derivado del User-Agent
 }

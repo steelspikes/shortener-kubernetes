@@ -13,6 +13,8 @@ import (
 	"shortener/internal/shared/rabbitmq"
 	"shortener/internal/shared/redis"
 	"shortener/services/api/internal/store"
+
+	"github.com/mileusna/useragent"
 )
 
 type Links struct {
@@ -30,9 +32,14 @@ type CreateLinkRequest struct {
 }
 
 type ServicesStatus struct {
-	Database bool
-	Redis    bool
-	Rabbit   bool
+	Database bool `json:"database"`
+	Rabbit   bool `json:"rabbit"`
+	Redis    bool `json:"redis"`
+}
+
+type ReadyResponse struct {
+	Status string          `json:"status"`
+	Checks *ServicesStatus `json:"checks,omitempty"`
 }
 
 // CreateLink maneja POST /links.
@@ -73,11 +80,11 @@ func (h *Links) ListLinks(w http.ResponseWriter, r *http.Request) {
 	httpserver.JSON(w, http.StatusOK, links)
 }
 
-func (h *Links) EnqueueClick(ctx context.Context, code string, remoteIP string, userAgent string) {
+func (h *Links) EnqueueClick(ctx context.Context, code string, remoteIP string, userAgent string, referer string, browser string) {
 	hashBytesIP := sha256.Sum256([]byte(remoteIP))
 	hashHexIP := fmt.Sprintf("%x", hashBytesIP)
 
-	err := h.Rabbit.PublishJSON(ctx, jobs.ClicksQueue, jobs.ClickJob{Code: code, ClickedAt: time.Now(), IPHash: hashHexIP, UserAgent: userAgent})
+	err := h.Rabbit.PublishJSON(ctx, jobs.ClicksQueue, jobs.ClickJob{Code: code, ClickedAt: time.Now(), IPHash: hashHexIP, UserAgent: userAgent, Referer: referer, Browser: browser})
 
 	if err != nil {
 		h.Log.Error("Could not publish Click", "Error", err)
@@ -90,10 +97,12 @@ func (h *Links) ListLink(w http.ResponseWriter, r *http.Request) {
 	redisQ := fmt.Sprintf("link:%s", code)
 
 	userAgent := r.Header.Get("User-Agent")
+	referer := r.Header.Get("Referer")
+	browser := useragent.Parse(userAgent).Name
 
 	catchedUrl, err := h.Redis.Get(r.Context(), redisQ).Result()
 	if !redis.IsMiss(err) {
-		h.EnqueueClick(r.Context(), code, r.RemoteAddr, userAgent)
+		h.EnqueueClick(r.Context(), code, r.RemoteAddr, userAgent, referer, browser)
 		http.Redirect(w, r, catchedUrl, http.StatusFound)
 		return
 	}
@@ -105,7 +114,7 @@ func (h *Links) ListLink(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	h.EnqueueClick(r.Context(), code, r.RemoteAddr, userAgent)
+	h.EnqueueClick(r.Context(), code, r.RemoteAddr, userAgent, referer, browser)
 
 	h.Redis.Set(r.Context(), redisQ, links.URL, redis.DefaultTTL())
 
@@ -113,23 +122,36 @@ func (h *Links) ListLink(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Links) Healthz(w http.ResponseWriter, r *http.Request) {
-	httpserver.JSON(w, http.StatusOK, nil)
+	response := ReadyResponse{Status: "ok"}
+	httpserver.JSON(w, http.StatusOK, response)
 }
 
 func (h *Links) Readyz(w http.ResponseWriter, r *http.Request) {
-	statuses := ServicesStatus{}
+	statuses := ServicesStatus{Database: true, Rabbit: true}
+	available := true
 
-	if h.Store.Check(r.Context()) == nil {
-		statuses.Database = true
+	if h.Store.Check(r.Context()) != nil {
+		statuses.Database = false
+		available = false
 	}
 
-	if h.Redis.Check(r.Context()) == nil {
-		statuses.Redis = true
+	if h.Redis.Check(r.Context()) != nil {
+		statuses.Redis = false
+		available = false
 	}
 
-	if h.Rabbit.Check(r.Context()) == nil {
-		statuses.Rabbit = true
+	if h.Rabbit.Check(r.Context()) != nil {
+		statuses.Rabbit = false
+		available = false
 	}
 
-	httpserver.JSON(w, http.StatusOK, statuses)
+	status, responseCode := "unavailable", http.StatusServiceUnavailable
+
+	if available {
+		status, responseCode = "ready", http.StatusOK
+	}
+
+	response := ReadyResponse{Status: status, Checks: &statuses}
+
+	httpserver.JSON(w, responseCode, response)
 }
