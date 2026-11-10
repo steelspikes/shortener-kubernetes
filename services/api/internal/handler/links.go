@@ -29,6 +29,12 @@ type CreateLinkRequest struct {
 	ExpiresAt *time.Time `json:"expires_at,omitempty"`
 }
 
+type ServicesStatus struct {
+	Database bool
+	Redis    bool
+	Rabbit   bool
+}
+
 // CreateLink maneja POST /links.
 func (h *Links) CreateLink(w http.ResponseWriter, r *http.Request) {
 	body, err := httpserver.DecodeBody[CreateLinkRequest](w, r)
@@ -104,4 +110,26 @@ func (h *Links) ListLink(w http.ResponseWriter, r *http.Request) {
 	h.Redis.Set(r.Context(), redisQ, links.URL, redis.DefaultTTL())
 
 	http.Redirect(w, r, links.URL, http.StatusFound)
+}
+
+func (h *Links) Healthz(w http.ResponseWriter, r *http.Request) {
+	httpserver.JSON(w, http.StatusOK, nil)
+}
+
+func (h *Links) Readyz(w http.ResponseWriter, r *http.Request) {
+	statuses := ServicesStatus{}
+
+	if h.Store.Check(r.Context()) == nil {
+		statuses.Database = true
+	}
+
+	if h.Redis.Check(r.Context()) == nil {
+		statuses.Redis = true
+	}
+
+	if h.Rabbit.Check(r.Context()) == nil {
+		statuses.Rabbit = true
+	}
+
+	httpserver.JSON(w, http.StatusOK, statuses)
 }

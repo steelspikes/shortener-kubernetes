@@ -5,8 +5,8 @@ services:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: shortener
-    ports:
-      - "5432:5432"
+    # ports:
+    #   - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
       # Solo corren la primera vez (volumen vacío). Solo los .up.sql.
@@ -23,8 +23,8 @@ services:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: shortener_clicks
-    ports:
-      - "5433:5432"
+    # ports: # No need to expose. Port 5433 will only work on computer host, not internal host
+    #   - "5433:5432"
     volumes:
       - pgdata_clicks:/var/lib/postgresql/data
       - ./migrations/clicks/000001_clicks.up.sql:/docker-entrypoint-initdb.d/001_clicks.sql:ro
@@ -66,6 +66,53 @@ services:
       interval: 10s
       timeout: 5s
       retries: 10
+    
+  api_service:
+    build:
+      context: services/api/
+      dockerfile: Dockerfile
+    ports: 
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    
+    # # Only for test
+    # stdin_open: true
+    # tty: true
+
+    environment:
+      DB_HOST: postgres
+      REDIS_ADDR: redis
+      RABBITMQ_ADDR: rabbitmq
+
+  worker_service: # Clicks saver
+    build:
+      context: services/worker/
+      dockerfile: Dockerfile
+    ports: 
+      - "8082:8082"
+    depends_on:
+      postgres-clicks:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    
+    # # Only for test
+    # stdin_open: true
+    # tty: true
+
+    environment:
+      DB_HOST: postgres-clicks
+      REDIS_ADDR: redis
+      RABBITMQ_ADDR: rabbitmq
+
 
 volumes:
   pgdata:

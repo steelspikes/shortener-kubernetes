@@ -17,4 +17,7 @@ func Routes(mux *http.ServeMux, links *handler.Links) {
 	mux.HandleFunc("POST /link", links.CreateLink)
 	mux.HandleFunc("GET /links", links.ListLinks)
 	mux.HandleFunc("GET /link/{code}", links.ListLink)
+
+	mux.HandleFunc("GET /healthz", links.Healthz)
+	mux.HandleFunc("GET /readyz", links.Readyz)
 }

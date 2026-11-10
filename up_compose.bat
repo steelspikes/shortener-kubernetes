@@ -1,3 +1,4 @@
 @echo off
 cd /d "%~dp0"
-docker compose up -d
+docker compose down --remove-orphans --rmi local
+docker compose up -d --build

@@ -88,3 +88,10 @@ func (s *LinkStore) List(ctx context.Context, code string) (Link, error) {
 	}
 	return l, nil
 }
+
+func (s *LinkStore) Check(ctx context.Context) error {
+	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+	err := s.pool.Ping(ctx)
+	return err
+}

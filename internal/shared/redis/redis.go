@@ -22,8 +22,10 @@ type Client struct {
 
 // Connect abre el cliente usando variables de entorno y verifica que Redis responda.
 func Connect(ctx context.Context) (*Client, error) {
+	REDIS_PORT := config.String("REDIS_PORT", "6379")
+
 	c := goredis.NewClient(&goredis.Options{
-		Addr:     config.String("REDIS_ADDR", "localhost:6379"),
+		Addr:     config.String("REDIS_ADDR", "localhost") + ":" + REDIS_PORT,
 		Password: config.String("REDIS_PASSWORD", ""),
 		DB:       config.Int("REDIS_DB", 0),
 	})
@@ -42,4 +44,8 @@ func DefaultTTL() time.Duration {
 // IsMiss indica si el error es un cache miss (la key no existe) y no un fallo real.
 func IsMiss(err error) bool {
 	return errors.Is(err, goredis.Nil)
+}
+
+func (c *Client) Check(ctx context.Context) error {
+	return c.Ping(ctx).Err()
 }

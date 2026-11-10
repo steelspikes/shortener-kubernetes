@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/url"
+	"time"
 
 	amqp "github.com/rabbitmq/amqp091-go"
 
@@ -25,13 +26,15 @@ type Client struct {
 
 // URL construye la URL AMQP desde variables de entorno.
 func URL() string {
+	RABBIT_PORT := config.String("RABBITMQ_PORT", "5672")
+
 	u := url.URL{
 		Scheme: "amqp",
 		User: url.UserPassword(
 			config.String("RABBITMQ_USER", "guest"),
 			config.String("RABBITMQ_PASSWORD", "guest"),
 		),
-		Host: config.String("RABBITMQ_ADDR", "localhost:5672"),
+		Host: config.String("RABBITMQ_ADDR", "localhost") + ":" + RABBIT_PORT,
 		Path: "/",
 	}
 	return u.String()
@@ -92,4 +95,30 @@ func (c *Client) Get(queue string) (msg Delivery, ok bool, err error) {
 // String implementa fmt.Stringer sin exponer credenciales.
 func (c *Client) String() string {
 	return fmt.Sprintf("rabbitmq(%s)", config.String("RABBITMQ_ADDR", "localhost:5672"))
+}
+
+func (c *Client) Check(ctx context.Context) error {
+	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+
+	done := make(chan error, 1) // 1. canal de resultado
+
+	go func() { // 2. trabajo en segundo plano
+		if c.conn.IsClosed() {
+			done <- amqp.ErrClosed
+			return
+		}
+		ch, err := c.conn.Channel()
+		if err == nil {
+			err = ch.Close()
+		}
+		done <- err
+	}()
+
+	select { // 3. espera: lo primero que ocurra
+	case err := <-done:
+		return err
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 }
